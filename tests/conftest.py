@@ -4,6 +4,8 @@ from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 
 from app.models.base import Base
+from app.models.users import Level, User
+from app.auth import hash_password
 import app.models  # noqa: F401 — ensures all models are registered
 
 ORDERS_DB_PATH = "/Users/aishwaryap/Documents/code_migration/SKSVB6/Orders.db"
@@ -101,3 +103,34 @@ def seeded_session(seeded_engine):
     session = Session()
     yield session
     session.close()
+
+
+@pytest.fixture
+def auth_session(db_engine):
+    """Session with pre-seeded Level and User rows with hashed passwords for auth tests."""
+    connection = db_engine.connect()
+    transaction = connection.begin()
+    Session = sessionmaker(bind=connection)
+    session = Session()
+
+    session.add(Level(level="Administrator"))
+    session.add(Level(level="Seller"))
+    session.flush()
+    session.add(User(
+        username="testadmin",
+        password=hash_password("adminpass"),
+        fullname="Test Admin",
+        level="Administrator",
+    ))
+    session.add(User(
+        username="testseller",
+        password=hash_password("sellerpass"),
+        fullname="Test Seller",
+        level="Seller",
+    ))
+    session.flush()
+
+    yield session
+    session.close()
+    transaction.rollback()
+    connection.close()
