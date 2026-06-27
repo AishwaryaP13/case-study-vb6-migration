@@ -61,20 +61,28 @@ def main():
         )
         print(f"  seeded {len(rows):3d} rows → {table}")
 
-    # Replace plaintext passwords with bcrypt hashes
+    # Replace plaintext passwords with bcrypt hashes (skip already-hashed)
     users = dst.execute("SELECT Username, Password FROM Users").fetchall()
+    hashed_count = 0
     for username, plaintext in users:
+        if plaintext and plaintext.startswith(("$2b$", "$2a$", "$2y$")):
+            continue  # already a bcrypt hash
         hashed = hash_password(plaintext or username)
         dst.execute("UPDATE Users SET Password = ? WHERE Username = ?", (hashed, username))
-    print(f"  hashed passwords for {len(users)} users")
+        hashed_count += 1
+    print(f"  hashed passwords for {hashed_count} users")
 
-    # Add a known demo admin account (password: admin123)
+    # Upsert known demo admin account (password: admin123) — always reset
     dst.execute("INSERT OR IGNORE INTO Levels (Level) VALUES ('Administrator')")
     dst.execute(
-        "INSERT OR IGNORE INTO Users (Username, Password, Fullname, Level) VALUES (?, ?, ?, ?)",
-        ("admin", hash_password("admin123"), "Demo Admin", "Administrator"),
+        "INSERT OR IGNORE INTO Users (Username, Fullname, Level) VALUES (?, ?, ?)",
+        ("admin", "Demo Admin", "Administrator"),
     )
-    print("  created demo user  admin / admin123")
+    dst.execute(
+        "UPDATE Users SET Password = ? WHERE Username = ?",
+        (hash_password("admin123"), "admin"),
+    )
+    print("  upserted demo user  admin / admin123")
 
     dst.execute("PRAGMA foreign_keys = ON")
     dst.commit()
